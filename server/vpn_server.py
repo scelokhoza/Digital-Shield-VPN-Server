@@ -1,4 +1,5 @@
 import ssl
+import toml
 import socket
 import threading
 import logging
@@ -6,17 +7,48 @@ from urllib.parse import urlparse
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.fernet import Fernet
+from dataclasses import dataclass
+
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 
+
+
+@dataclass
+class VPNData:
+    server_address: str
+    certfile: str
+    keyfile: str
+    port: int
+    
+
+class Configuration:
+    def __init__(self, target_file: str) -> None:
+        self.file = target_file
+        
+    
+    def load_config(self) -> VPNData:
+        with open(self.file, 'r') as config_file:
+            config_data = toml.load(config_file)
+            
+        return VPNData(
+            server_address=config_data['server']['address'],
+            certfile=config_data['server']['certfile'],
+            keyfile=config_data['server']['keyfile'],
+            port=config_data['server']['port']
+        )
+    
+
 class VPNServer:
-    def __init__(self, server_address='0.0.0.0', port=8080, certfile='server.crt', keyfile='server.key'):
-        self.server_address = server_address
-        self.port = port
+    def __init__(self, config_file: str):
+        self.server_config: Configuration = Configuration(config_file)
+        self.configuration: VPNData = self.server_config.load_config()
+        self.server_address = self.configuration.server_address
+        self.port = self.configuration.port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.certfile = certfile
-        self.keyfile = keyfile
+        self.certfile = self.configuration.certfile
+        self.keyfile = self.configuration.keyfile
         self.clients = {}
         self.client_traffic = {}
 
@@ -56,6 +88,7 @@ class VPNServer:
             logging.error(f"An error occurred: {e}")
         finally:
             self.server_socket.close()
+
 
     def handle_client(self, ssl_client_socket, client_address):
         try:
@@ -109,6 +142,7 @@ class VPNServer:
             ssl_client_socket.close()
             del self.clients[client_address]
 
+
     def forward_to_destination(self, data):
         try:
             # Handle CONNECT requests
@@ -149,7 +183,6 @@ class VPNServer:
 
                 destination_socket.close()
                 return b""
-
             else:
                 headers = data.split(b'\r\n')
                 host_header = next((h for h in headers if b'Host:' in h), None)
@@ -203,6 +236,7 @@ class VPNServer:
                 break
             else:
                 logging.warning("Unknown command")
+                
 
     def list_clients(self):
         if self.clients:
@@ -212,12 +246,14 @@ class VPNServer:
         else:
             logging.info("No connected clients.")
 
+
     def show_traffic(self, client_ip):
         traffic = self.client_traffic.get(client_ip, None)
         if traffic is not None:
             logging.info(f"Traffic for {client_ip}: {traffic} bytes")
         else:
             logging.warning(f"No traffic data for {client_ip}")
+
 
     def disconnect_client(self, client_ip):
         for client_address, client_socket in list(self.clients.items()):
@@ -228,13 +264,13 @@ class VPNServer:
                 return
         logging.warning(f"No client found with IP {client_ip}")
 
+
     def quit_server(self):
         logging.info("Shutting down server...")
         for client_socket in self.clients.values():
             client_socket.close()
         self.server_socket.close()
         logging.info("Server shut down.")
-
 
 
 if __name__ == '__main__':

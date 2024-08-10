@@ -1,0 +1,10 @@
+[details]
+founder = "Scelo Khoza"
+version = "0.1.0"
+founder_email = "sceloprince749@gmail.com"
+
+[server]
+port = "8080"
+server_address='0.0.0.0'
+certfile='server.crt'
+keyfile='server.key'
