@@ -1,32 +1,28 @@
 
 from flask import Flask, render_template
 from flask_socketio import SocketIO
-import random
+from server import vpn_server
 import psutil
 import threading
 import time
 
 app = Flask(__name__)
 # app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio= SocketIO(app, cors_allowed_origins="*")
 
-def emit_dummy_data():
+
+server = vpn_server.VPNServer('config.toml')
+
+def emit_data():
     """Emit dummy data at regular intervals."""
     while True:
-        packet_loss = random.uniform(0, 100)
-        active_sessions = random.randint(1, 100)
-        traffic_in = random.randint(1000, 10000)
-        traffic_out = random.randint(1000, 10000)
-        cpu_usage = psutil.cpu_percent()
-        memory_info = psutil.virtual_memory()
-
         data = {
-            'packet_loss': packet_loss,
-            'active_sessions': active_sessions,
-            'traffic_in': traffic_in,
-            'traffic_out': traffic_out,
-            'cpu_usage': cpu_usage,
-            'memory_usage': memory_info.percent
+            'packet_loss':server.get_packet_loss(),
+            'active_sessions': server.get_clients(), 
+            'traffic_in': server.get_traffic_in(),
+            'traffic_out': server.get_traffic_out(),
+            'cpu_usage': psutil.cpu_percent(),
+            'memory_usage': psutil.virtual_memory()
         }
 
         socketio.emit('update_data', data)
@@ -34,10 +30,11 @@ def emit_dummy_data():
 
 @app.route('/')
 def index():
+    server.start_vpn()
     return render_template('index.html')
 
 if __name__ == '__main__':
-    threading.Thread(target=emit_dummy_data).start()
+    threading.Thread(target=emit_data).start()
     socketio.run(app, host='0.0.0.0', port=5000)
 
 

@@ -75,8 +75,8 @@ class VPNServer:
         return sum(self.client_traffic_out.values())
     
     
-    def get_clients(self) -> dict:
-        return self.clients
+    def get_clients(self) -> int:
+        return sum(len(self.clients.keys()))
     
     def get_packet_loss(self) -> int:
         return self.packet_loss
