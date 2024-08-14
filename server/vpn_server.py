@@ -50,13 +50,14 @@ class VPNServer:
         self.certfile: str = self.configuration.certfile
         self.keyfile: str = self.configuration.keyfile
         self.clients: dict = {}
+        self.packet_loss: int = 0
         self.client_traffic: dict = {}
         self.client_traffic_out: dict  = {}
         self.client_packet_count: dict = {}
 
         self.private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         self.public_key = self.private_key.public_key()
-        self.public_pem = self.public_key.public_bytes(
+        self.public_pem: bytes = self.public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
@@ -77,8 +78,11 @@ class VPNServer:
     def get_clients(self) -> dict:
         return self.clients
     
+    def get_packet_loss(self) -> int:
+        return self.packet_loss
     
-    def calculate_packet_loss(self, client_address) -> int:
+    
+    def calculate_packet_loss(self, client_address: tuple) -> int:
         client_stats = self.client_packet_count.get(client_address)
         if not client_stats:
             logging.error(f"No packet data for client {client_address}")
@@ -161,6 +165,7 @@ class VPNServer:
                     ssl_client_socket.sendall(encrypted_response)
                     self.client_packet_count[client_address[0]]['sent'] += 1
                     self.client_traffic_out[client_address[0]] += len(response)
+                    self.packet_loss = self.calculate_packet_loss(client_address[0])
                 except socket.timeout:
                     logging.warning("Socket timed out. Closing connection.")
                     break
