@@ -23,7 +23,7 @@ vpn_data: dict = {
 
 @app.route('/')
 def index():
-    return render_template('dashboard.html', data=vpn_data)
+    return render_template('index.html', data=vpn_data)
 
 
 def update_vpn_data():

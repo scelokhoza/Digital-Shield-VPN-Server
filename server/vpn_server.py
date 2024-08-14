@@ -41,16 +41,17 @@ class Configuration:
     
 
 class VPNServer:
-    def __init__(self, config_file: str):
+    def __init__(self, config_file: str) -> None:
         self.server_config: Configuration = Configuration(config_file)
         self.configuration: VPNData = self.server_config.load_config()
-        self.server_address = self.configuration.server_address
-        self.port = self.configuration.port
+        self.server_address: str = self.configuration.server_address
+        self.port: int = self.configuration.port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.certfile = self.configuration.certfile
-        self.keyfile = self.configuration.keyfile
-        self.clients = {}
-        self.client_traffic = {}
+        self.certfile: str = self.configuration.certfile
+        self.keyfile: str = self.configuration.keyfile
+        self.clients: dict = {}
+        self.client_traffic: dict = {}
+        self.client_packet_count: dict = {}
 
         self.private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         self.public_key = self.private_key.public_key()
@@ -63,7 +64,7 @@ class VPNServer:
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self.context.load_cert_chain(certfile=self.certfile, keyfile=self.keyfile)
 
-    def start_vpn(self):
+    def start_vpn(self) -> None:
         try:
             self.server_socket.bind((self.server_address, self.port))
             self.server_socket.listen(5)
@@ -75,6 +76,7 @@ class VPNServer:
                 client_socket, client_address = self.server_socket.accept()
                 self.clients[client_address] = client_socket
                 self.client_traffic[client_address[0]] = 0
+                self.client_packet_count[client_address[0]] = {'sent': 0, 'recv': 0}
                 logging.info(f"Connection from {client_address}")
 
                 # Wrap the socket with SSL context
@@ -90,15 +92,17 @@ class VPNServer:
             self.server_socket.close()
 
 
-    def handle_client(self, ssl_client_socket, client_address):
+    def handle_client(self, ssl_client_socket, client_address: tuple) -> None:
         try:
             ssl_client_socket.settimeout(100)
             
             # Send the server's public key to the client
             ssl_client_socket.sendall(self.public_pem)
+            self.client_packet_count[client_address[0]]['sent'] +=1
 
             # Receive the encrypted symmetric key from the client
             encrypted_symmetric_key = ssl_client_socket.recv(4096)
+            self.client_packet_count[client_address[0]]['received'] += 1
             symmetric_key = self.private_key.decrypt(
                 encrypted_symmetric_key,
                 padding.OAEP(
@@ -114,14 +118,16 @@ class VPNServer:
                     encrypted_data = ssl_client_socket.recv(4096)
                     if not encrypted_data:
                         break
+                    self.client_packet_count[client_address[0]]['received'] += 1
 
                     data = cipher.decrypt(encrypted_data)
                     self.client_traffic[client_address[0]] += len(data)
                     logging.info(f"Data received from {client_address}: {len(data)} bytes")
 
-                    response = self.forward_to_destination(data)
+                    response = self.forward_to_destination(data, client_address)
                     encrypted_response = cipher.encrypt(response)
                     ssl_client_socket.sendall(encrypted_response)
+                    self.client_packet_count[client_address[0]]['sent'] += 1
                 except socket.timeout:
                     logging.warning("Socket timed out. Closing connection.")
                     break
@@ -143,7 +149,7 @@ class VPNServer:
             del self.clients[client_address]
 
 
-    def forward_to_destination(self, data):
+    def forward_to_destination(self, data, client_address) ->bytes:
         try:
             # Handle CONNECT requests
             if data.startswith(b'CONNECT'):
@@ -175,11 +181,13 @@ class VPNServer:
                     if not client_data:
                         break
                     destination_socket.sendall(client_data)
+                    self.client_packet_count[client_address[0]]['sent'] += 1
 
                     response_data = destination_socket.recv(4096)
                     if not response_data:
                         break
                     self.ssl_client_socket.sendall(response_data)
+                    self.client_packet_count[client_address[0]]['received'] += 1
 
                 destination_socket.close()
                 return b""
@@ -204,6 +212,7 @@ class VPNServer:
 
                 destination_socket.connect((url.hostname, port))
                 destination_socket.sendall(data)
+                self.client_packet_count[client_address[0]]['sent'] += 1
 
                 response_data = b""
                 while True:
@@ -211,6 +220,7 @@ class VPNServer:
                     if not chunk:
                         break
                     response_data += chunk
+                    self.client_packet_count[client_address[0]]['received'] += 1
 
                 destination_socket.close()
                 return response_data
@@ -218,6 +228,23 @@ class VPNServer:
         except Exception as e:
             logging.error(f"Error forwarding data to destination: {e}")
             return b""
+    
+    def calculate_packet_loss(self, client_address) -> int:
+        client_stats = self.client_packet_count.get(client_address)
+        if not client_stats:
+            logging.error(f"No packet data for client {client_address}")
+            return -1
+        
+        sent = client_stats['sent']
+        received = client_stats['received']
+        if sent==0:
+            logging.warning(f"No packet data for client {client_address}")
+            return 0
+        
+        packet_loss = ((sent - received) / sent) * 100
+        logging.info(f"Packet loss for client {client_address}: {packet_loss}%")
+        return packet_loss
+    
 
 
     def admin_commands(self):
