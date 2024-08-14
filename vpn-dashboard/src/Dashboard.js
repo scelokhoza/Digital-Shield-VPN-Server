@@ -26,7 +26,14 @@ const Dashboard = () => {
     });
 
     useEffect(() => {
-        // Here you can fetch real-time data using WebSockets or periodic API calls
+        socket.on('update_data', (newData) =>{
+            setData(newData);
+        });
+
+        return () => {
+            socket.off('update_data');
+            socket.disconnect();
+          };
     }, []);
 
     const trafficData = {
