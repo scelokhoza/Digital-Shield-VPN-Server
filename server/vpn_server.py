@@ -30,7 +30,7 @@ class Configuration:
     
     def load_config(self) -> VPNData:
         with open(self.file, 'r') as config_file:
-            config_data = toml.load(config_file)
+            config_data: dict = toml.load(config_file)
             
         return VPNData(
             server_address=config_data['server']['address'],
@@ -51,6 +51,7 @@ class VPNServer:
         self.keyfile: str = self.configuration.keyfile
         self.clients: dict = {}
         self.client_traffic: dict = {}
+        self.client_traffic_out: dict  = {}
         self.client_packet_count: dict = {}
 
         self.private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -64,6 +65,36 @@ class VPNServer:
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self.context.load_cert_chain(certfile=self.certfile, keyfile=self.keyfile)
 
+    
+    def get_traffic_in(self) -> int:
+        return sum(self.client_traffic.values())
+    
+    
+    def get_traffic_out(self) -> int:
+        return sum(self.client_traffic_out.values())
+    
+    
+    def get_clients(self) -> dict:
+        return self.clients
+    
+    
+    def calculate_packet_loss(self, client_address) -> int:
+        client_stats = self.client_packet_count.get(client_address)
+        if not client_stats:
+            logging.error(f"No packet data for client {client_address}")
+            return -1
+        
+        sent = client_stats['sent']
+        received = client_stats['received']
+        if sent==0:
+            logging.warning(f"No packet data for client {client_address}")
+            return 0
+        
+        packet_loss = ((sent - received) / sent) * 100
+        logging.info(f"Packet loss for client {client_address}: {packet_loss}%")
+        return packet_loss
+    
+    
     def start_vpn(self) -> None:
         try:
             self.server_socket.bind((self.server_address, self.port))
@@ -76,6 +107,7 @@ class VPNServer:
                 client_socket, client_address = self.server_socket.accept()
                 self.clients[client_address] = client_socket
                 self.client_traffic[client_address[0]] = 0
+                self.client_traffic_out[client_address[0]] = 0
                 self.client_packet_count[client_address[0]] = {'sent': 0, 'recv': 0}
                 logging.info(f"Connection from {client_address}")
 
@@ -120,7 +152,7 @@ class VPNServer:
                         break
                     self.client_packet_count[client_address[0]]['received'] += 1
 
-                    data = cipher.decrypt(encrypted_data)
+                    data: bytes = cipher.decrypt(encrypted_data)
                     self.client_traffic[client_address[0]] += len(data)
                     logging.info(f"Data received from {client_address}: {len(data)} bytes")
 
@@ -128,6 +160,7 @@ class VPNServer:
                     encrypted_response = cipher.encrypt(response)
                     ssl_client_socket.sendall(encrypted_response)
                     self.client_packet_count[client_address[0]]['sent'] += 1
+                    self.client_traffic_out[client_address[0]] += len(response)
                 except socket.timeout:
                     logging.warning("Socket timed out. Closing connection.")
                     break
@@ -229,23 +262,6 @@ class VPNServer:
             logging.error(f"Error forwarding data to destination: {e}")
             return b""
     
-    def calculate_packet_loss(self, client_address) -> int:
-        client_stats = self.client_packet_count.get(client_address)
-        if not client_stats:
-            logging.error(f"No packet data for client {client_address}")
-            return -1
-        
-        sent = client_stats['sent']
-        received = client_stats['received']
-        if sent==0:
-            logging.warning(f"No packet data for client {client_address}")
-            return 0
-        
-        packet_loss = ((sent - received) / sent) * 100
-        logging.info(f"Packet loss for client {client_address}: {packet_loss}%")
-        return packet_loss
-    
-
 
     def admin_commands(self):
         while True:
