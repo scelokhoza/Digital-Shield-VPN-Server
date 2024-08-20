@@ -1,7 +1,7 @@
 
 from flask import Flask, render_template
 from flask_socketio import SocketIO
-from server import vpn_server
+from . import vpn_server
 import psutil
 import threading
 import time
@@ -18,7 +18,7 @@ def emit_data():
     while True:
         data = {
             'packet_loss':server.get_packet_loss(),
-            'active_sessions': server.get_clients(), 
+            'active_sessions': server.get_clients(),
             'traffic_in': server.get_traffic_in(),
             'traffic_out': server.get_traffic_out(),
             'cpu_usage': psutil.cpu_percent(),

@@ -33,7 +33,7 @@ class Configuration:
             config_data: dict = toml.load(config_file)
             
         return VPNData(
-            server_address=config_data['server']['address'],
+            server_address=config_data['server']['server_address'],
             certfile=config_data['server']['certfile'],
             keyfile=config_data['server']['keyfile'],
             port=config_data['server']['port']
