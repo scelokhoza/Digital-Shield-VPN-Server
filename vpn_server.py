@@ -21,27 +21,61 @@ class VPNData:
     certfile: str
     keyfile: str
     port: int
-    
+
 
 class Configuration:
     def __init__(self, target_file: str) -> None:
+        """
+        Initialize a Configuration object with the path to a configuration file.
+
+        :param target_file: Path to the configuration file
+        :type target_file: str
+        """
         self.file = target_file
-        
-    
+
+    def read_config_file(self, file) -> dict:
+        """
+        Reads a configuration file from disk and returns its contents as a Python dictionary.
+
+        :param file: The path to the configuration file to read.
+        :type file: str
+        :return: A dictionary containing the configuration data.
+        :rtype: dict
+        """
+        try:
+            with open(file, 'r') as config_file:
+                config_data: dict = toml.load(config_file)
+            return config_data
+        except FileNotFoundError as e:
+            logging.error(f"Config file not found: {e}")
+
     def load_config(self) -> VPNData:
-        with open(self.file, 'r') as config_file:
-            config_data: dict = toml.load(config_file)
-            
-        return VPNData(
-            server_address=config_data['server']['server_address'],
-            certfile=config_data['server']['certfile'],
-            keyfile=config_data['server']['keyfile'],
-            port=config_data['server']['port']
-        )
-    
+        """
+        Load the configuration data from the specified file and return it as a VPNData object.
+
+        :return: VPNData object containing the server address, certificate file, key file, and port.
+        :rtype: VPNData
+        """
+        config_data: dict = self.read_config_file(self.file)
+        try:
+            return VPNData(
+                server_address=config_data['server']['server_address'],
+                certfile=config_data['server']['certfile'],
+                keyfile=config_data['server']['keyfile'],
+                port=config_data['server']['port']
+            )
+        except KeyError as e:
+            logging.error(f"Missing key in config file: {e}")
+
 
 class VPNServer:
     def __init__(self, config_file: str) -> None:
+        """
+        Initialize a VPNServer with the given configuration file.
+
+        :param config_file: The path to the configuration file
+        :type config_file: str
+        """
         self.server_config: Configuration = Configuration(config_file)
         self.configuration: VPNData = self.server_config.load_config()
         self.server_address: str = self.configuration.server_address
@@ -66,46 +100,92 @@ class VPNServer:
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self.context.load_cert_chain(certfile=self.certfile, keyfile=self.keyfile)
 
-    
+
     def get_traffic_in(self) -> int:
+        """
+        Returns the total traffic in for all clients.
+
+        :return: The total traffic in for all clients
+        :rtype: int
+        """
         return sum(self.client_traffic.values())
-    
-    
+
+
     def get_traffic_out(self) -> int:
+        """
+        Returns the total traffic out for all clients.
+
+        :return: The total traffic out for all clients
+        :rtype: int
+        """
         return sum(self.client_traffic_out.values())
-    
-    
+
     def get_clients(self) -> int:
+        """
+        Returns the number of connected clients.
+
+        :return: The number of connected clients
+        :rtype: int
+        """
         return sum(len(self.clients.keys()))
-    
+
     def get_packet_loss(self) -> int:
+        """
+        Returns the packet loss percentage for the VPN server.
+
+        :return: The packet loss percentage
+        :rtype: int
+        """
         return self.packet_loss
-    
-    
+
     def calculate_packet_loss(self, client_address: tuple) -> int:
+        """
+        Calculate the packet loss percentage for a given client address.
+
+        :param client_address: The IP address and port of the client
+        :type client_address: tuple
+        :return: The packet loss percentage for the client. Returns -1 if no packet data is available,
+                and 0 if no packets were sent to the client.
+        :rtype: int
+        """
         client_stats = self.client_packet_count.get(client_address)
         if not client_stats:
             logging.error(f"No packet data for client {client_address}")
             return -1
-        
+
         sent = client_stats['sent']
         received = client_stats['received']
         if sent==0:
             logging.warning(f"No packet data for client {client_address}")
             return 0
-        
+
         packet_loss = ((sent - received) / sent) * 100
         logging.info(f"Packet loss for client {client_address}: {packet_loss}%")
         return packet_loss
-    
-    
+
     def start_vpn(self) -> None:
+        """
+        Start the VPN server and listen for incoming connections.
+
+        This function binds the server socket to the specified server address and port,
+        and starts listening for incoming connections. It enters an infinite loop to
+        accept incoming connections and start handling them in separate threads.
+
+        The function wraps each incoming client socket with the SSL context and
+        starts a new thread to handle the client connection. The function keeps track
+        of the number of connected clients and their traffic statistics.
+
+        If an exception occurs during the operation, it is logged and the server socket
+        is closed.
+
+        This function does not take any parameters and does not return anything.
+        """
         try:
             self.server_socket.bind((self.server_address, self.port))
             self.server_socket.listen(5)
             logging.info(f"Server started on {self.server_address}:{self.port}")
 
-            threading.Thread(target=self.admin_commands).start()
+            # threading.Thread(target=self.admin_commands).start()
 
             while True:
                 client_socket, client_address = self.server_socket.accept()
@@ -129,9 +209,28 @@ class VPNServer:
 
 
     def handle_client(self, ssl_client_socket, client_address: tuple) -> None:
+        """
+        Handle the client connection and traffic.
+
+        This function accepts an SSL-wrapped client socket and its address as parameters.
+        It establishes a secure connection with the client by sending the server's public
+        key and receiving the client's symmetric key. It then enters a loop to receive
+        encrypted data from the client, decrypt it, forward it to the destination server,
+        receive the response, encrypt it, and send it back to the client.
+
+        The function keeps track of the traffic statistics for each client and calculates
+        the packet loss. It also handles exceptions that may occur during the operation.
+
+        Parameters:
+        - ssl_client_socket (ssl.SSLSocket): The SSL-wrapped client socket.
+        - client_address (tuple): The client's address.
+
+        Returns:
+        None
+        """
         try:
             ssl_client_socket.settimeout(100)
-            
+
             # Send the server's public key to the client
             ssl_client_socket.sendall(self.public_pem)
             self.client_packet_count[client_address[0]]['sent'] +=1
@@ -188,6 +287,24 @@ class VPNServer:
 
 
     def forward_to_destination(self, data, client_address) ->bytes:
+        """
+        Forward the received data to the destination server based on the headers.
+
+        This function takes in the received data from the client and forwards it to the
+        appropriate destination server based on the headers. If the data is a CONNECT
+        request, it establishes a tunnel by sending an HTTP 200 Connection Established
+        response and then forwards the data to the destination server. If the data is not
+        a CONNECT request, it forwards the data to the destination server after parsing
+        the headers to determine the destination URL.
+
+        Parameters:
+        - data (bytes): The received data from the client.
+        - client_address (tuple): The client's address.
+
+        Returns:
+        - bytes: The response data from the destination server, or an empty bytes object
+                if an error occurred.
+        """
         try:
             # Handle CONNECT requests
             if data.startswith(b'CONNECT'):
@@ -266,7 +383,7 @@ class VPNServer:
         except Exception as e:
             logging.error(f"Error forwarding data to destination: {e}")
             return b""
-    
+
 
     def admin_commands(self):
         while True:
@@ -284,7 +401,7 @@ class VPNServer:
                 break
             else:
                 logging.warning("Unknown command")
-                
+
 
     def list_clients(self):
         if self.clients:
