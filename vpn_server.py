@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.fernet import Fernet
+from scapy.all import sniff
+from scapy.layers.inet import IP, TCP, UDP, ICMP
 
 
 # Setup logging
@@ -407,7 +409,8 @@ class VPNServer:
             "5": "show memory usage",
             "6": "is private? <client_ip>",
             "7": "location <client_ip>",
-            "8": "quit",
+            "8": "packet loss",
+            "9": "quit",
         }
         for i, command in self.commands.items():
             print(f"{i}. {command}")
@@ -441,6 +444,8 @@ class VPNServer:
                 address: str = input("Enter IP address: ").strip()
                 self.location(address)
             elif command == "8":
+                self.get_packet_loss()
+            elif command == "9":
                 option: str = input("Are you sure you want to quit? (y/n): ").strip().lower()
                 if option == "y":
                     self.quit_server()
