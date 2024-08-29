@@ -12,8 +12,7 @@ from urllib.parse import urlparse
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.fernet import Fernet
-from scapy.all import sniff
-from scapy.layers.inet import IP, TCP, UDP, ICMP
+
 
 
 # Setup logging
