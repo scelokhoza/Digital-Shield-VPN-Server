@@ -3,11 +3,11 @@ import toml
 import socket
 import threading
 import logging
+from dataclasses import dataclass
 from urllib.parse import urlparse
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.fernet import Fernet
-from dataclasses import dataclass
 
 
 # Setup logging
@@ -185,7 +185,7 @@ class VPNServer:
             self.server_socket.listen(5)
             logging.info(f"Server started on {self.server_address}:{self.port}")
 
-            # threading.Thread(target=self.admin_commands).start()
+            threading.Thread(target=self.admin_commands).start()
 
             while True:
                 client_socket, client_address = self.server_socket.accept()
@@ -384,13 +384,25 @@ class VPNServer:
             logging.error(f"Error forwarding data to destination: {e}")
             return b""
 
+    def show_status(self):
+        print("VPN Server Status")
+        print(f"Server Address: {self.server_address}")
+        print(f"Port: {self.port}")
+        print(f"Connected Clients: {self.get_clients()}")
+        print(f"Total Traffic In: {self.get_traffic_in()} bytes")
+        print(f"Total Traffic Out: {self.get_traffic_out()} bytes")
+        print(f"Packet Loss: {self.get_packet_loss()}%")
+
 
     def admin_commands(self):
+        self.show_status()
         while True:
             command = input("Enter command: ").strip().lower()
             if command == "list clients":
                 self.list_clients()
-            elif command.startswith("show traffic"):
+            elif command in ("show status", "status"):
+                self.show_status()
+            elif command.startswith("traffic"):
                 _, client_ip = command.split()
                 self.show_traffic(client_ip)
             elif command.startswith("disconnect"):
