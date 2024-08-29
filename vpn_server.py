@@ -1,8 +1,9 @@
 import ssl
 import toml
 import socket
-import threading
 import logging
+import pyfiglet
+import threading
 from dataclasses import dataclass
 from urllib.parse import urlparse
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
@@ -394,23 +395,45 @@ class VPNServer:
         print(f"Packet Loss: {self.get_packet_loss()}%")
 
 
+    def commands_options(self):
+        self.commands: dict = {
+            "1": "list clients",
+            "2": "show status",
+            "3": "traffic <client_ip>",
+            "4": "disconnect <client_ip>",
+            "5": "show memory usage",
+            "6": "quit",
+        }
+        for i, command in self.commands.items():
+            print(f"{i}. {command}")
+
+
     def admin_commands(self):
+        print(pyfiglet.figlet_format("Digital-Shield-VPN Server"))
         self.show_status()
         while True:
-            command = input("Enter command: ").strip().lower()
-            if command == "list clients":
+            command = input("choose option: ").strip().lower()
+            self.commands_options()
+            if command == "1":
                 self.list_clients()
-            elif command in ("show status", "status"):
+            elif command=="2":
                 self.show_status()
-            elif command.startswith("traffic"):
-                _, client_ip = command.split()
-                self.show_traffic(client_ip)
-            elif command.startswith("disconnect"):
-                _, client_ip = command.split()
-                self.disconnect_client(client_ip)
-            elif command == "quit":
-                self.quit_server()
-                break
+            elif command=="3":
+                option: str = input("press <ENTER> for all traffic or enter IP address or specific traffic")
+                if (option == ""):
+                    self.show_traffic()
+                else:
+                    self.show_traffic(option)
+            elif command=="4":
+                address: str = input("Enter IP address to disconnect: ").strip()
+                self.disconnect_client(address)
+            elif command == "5":
+                self.show_memory_usage()
+            elif command == "6":
+                option: str = input("Are you sure you want to quit? (y/n): ").strip().lower()
+                if option == "y":
+                    self.quit_server()
+                    break
             else:
                 logging.warning("Unknown command")
 
@@ -424,12 +447,16 @@ class VPNServer:
             logging.info("No connected clients.")
 
 
-    def show_traffic(self, client_ip):
-        traffic = self.client_traffic.get(client_ip, None)
-        if traffic is not None:
-            logging.info(f"Traffic for {client_ip}: {traffic} bytes")
+    def show_traffic(self, client_ip=None):
+        if (client_ip is None):
+            for client, traffic in self.client_traffic.items():
+                logging.info(f"Traffic for {client}: {traffic} bytes")
         else:
-            logging.warning(f"No traffic data for {client_ip}")
+            traffic = self.client_traffic.get(client_ip, None)
+            if traffic is not None:
+                logging.info(f"Traffic for {client_ip}: {traffic} bytes")
+            else:
+                logging.warning(f"No traffic data for {client_ip}")
 
 
     def disconnect_client(self, client_ip):
