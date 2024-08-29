@@ -1,8 +1,11 @@
 import ssl
 import toml
 import socket
+import psutil
 import logging
 import pyfiglet
+import ipaddress
+import geocoder
 import threading
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -402,7 +405,9 @@ class VPNServer:
             "3": "traffic <client_ip>",
             "4": "disconnect <client_ip>",
             "5": "show memory usage",
-            "6": "quit",
+            "6": "is private? <client_ip>",
+            "7": "location <client_ip>",
+            "8": "quit",
         }
         for i, command in self.commands.items():
             print(f"{i}. {command}")
@@ -430,6 +435,12 @@ class VPNServer:
             elif command == "5":
                 self.show_memory_usage()
             elif command == "6":
+                address: str = input("Enter IP address: ").strip()
+                self.ip_is_private(address)
+            elif command == "7":
+                address: str = input("Enter IP address: ").strip()
+                self.location(address)
+            elif command == "8":
                 option: str = input("Are you sure you want to quit? (y/n): ").strip().lower()
                 if option == "y":
                     self.quit_server()
@@ -468,6 +479,23 @@ class VPNServer:
                 return
         logging.warning(f"No client found with IP {client_ip}")
 
+
+    def ip_is_private(self, ip):
+        try:
+            ip_obj = ipaddress.ip_address(ip)
+            return ip_obj.is_private
+        except ValueError:
+            return False
+
+    def show_memory_usage(self):
+        memory = psutil.virtual_memory()
+        logging.info(f"Memory usage: {memory.percent}%")
+
+
+    def location(self, ip: str):
+        g = geocoder(ip)
+        logging.info(g.latlng)
+        logging.info(g.city)
 
     def quit_server(self):
         logging.info("Shutting down server...")
