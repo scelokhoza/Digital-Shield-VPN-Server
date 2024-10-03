@@ -67,7 +67,7 @@ class Configuration:
                 server_address=config_data['server']['server_address'],
                 certfile=config_data['server']['certfile'],
                 keyfile=config_data['server']['keyfile'],
-                port=config_data['server']['port']
+                port=int(config_data['server']['port'])
             )
         except KeyError as e:
             logging.error(f"Missing key in config file: {e}")
@@ -132,7 +132,8 @@ class VPNServer:
         :return: The number of connected clients
         :rtype: int
         """
-        return sum(len(self.clients.keys()))
+        return len(self.clients)
+
 
     def get_packet_loss(self) -> int:
         """
@@ -510,7 +511,7 @@ class VPNServer:
 
 
 if __name__ == '__main__':
-    server = VPNServer()
+    server = VPNServer('config.toml')
     server.start_vpn()
 
 
