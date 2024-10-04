@@ -191,7 +191,7 @@ class VPNServer:
             self.server_socket.listen(5)
             logging.info(f"Server started on {self.server_address}:{self.port}")
 
-            threading.Thread(target=self.admin_commands).start()
+            # threading.Thread(target=self.admin_commands).start()
 
             while True:
                 client_socket, client_address = self.server_socket.accept()
