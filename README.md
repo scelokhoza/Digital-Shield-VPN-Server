@@ -1,3 +1,3 @@
 # Digital-Shield-VPN-Server
 
-# app.py
+# Under Development due to a few glitches
